@@ -1,0 +1,45 @@
+name: Evangelio diario
+
+on:
+  schedule:
+    # GitHub Actions usa UTC y NO respeta el horario de verano de Chile.
+    # Chile continental:
+    #   - CLT (invierno) = UTC-4  →  07:00 Chile = 11:00 UTC
+    #   - CLST (verano)  = UTC-3  →  07:00 Chile = 10:00 UTC
+    # Disparamos en ambas horas; el script (src/index.js) verifica con
+    # TZ=America/Santiago si realmente son las 07:00 locales y, si no, sale
+    # sin enviar. Así llega exactamente UN correo al día.
+    - cron: "0 10 * * *"
+    - cron: "0 11 * * *"
+  workflow_dispatch:
+    inputs:
+      force:
+        description: "Forzar envío aunque no sean las 07:00 Chile"
+        required: false
+        default: "false"
+
+jobs:
+  send-evangelio:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci --omit=dev || npm install --omit=dev
+
+      - name: Enviar Evangelio del día
+        env:
+          GMAIL_USER: ${{ secrets.GMAIL_USER }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          TO_EMAIL: ${{ secrets.TO_EMAIL }}
+          API_KEY: ${{ secrets.API_KEY }}
+          FORCE_RUN: ${{ github.event.inputs.force == 'true' && '1' || '0' }}
+        run: node src/index.js
