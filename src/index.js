@@ -28,45 +28,86 @@ function log(...args) {
   console.log(`[${new Date().toISOString()}]`, ...args);
 }
 
+function annotate(level, message) {
+  // GitHub Actions annotations: aparecen en la página del run.
+  console.log(`::${level}::${message.replace(/\n/g, "%0A")}`);
+}
+
 async function main() {
   const { fecha, hour } = nowInChile();
-  log(`Hora actual en Chile: ${hour}:00 — fecha ${fecha}`);
+  log(`Hora Chile: ${hour}:00 — fecha ${fecha}`);
 
-  // GitHub Actions corre en UTC y dispara dos veces (10 y 11 UTC) para cubrir
-  // el cambio de horario CLT/CLST. Solo ejecutamos en la corrida que coincide
-  // con las 07:00 en Chile (salvo que se fuerce con FORCE_RUN=1).
   if (process.env.FORCE_RUN !== "1" && hour !== TARGET_HOUR) {
-    log(
-      `No es la hora objetivo (${TARGET_HOUR}:00 Chile). Saliendo sin enviar.`,
-    );
+    log(`No es la hora objetivo (${TARGET_HOUR}:00 Chile). Saliendo OK.`);
     return;
   }
 
-  log("Obteniendo Evangelio del día…");
-  const { fechaLiturgica, cita, texto, fuente } = await fetchGospel();
-  log(`OK. Cita: "${cita}". Caracteres de texto: ${texto.length}.`);
+  let payload;
+  let fetchError = null;
 
-  const reflexion = buildReflection({ texto, cita });
+  try {
+    log("Obteniendo Evangelio…");
+    const g = await fetchGospel();
+    payload = {
+      fecha,
+      fechaLiturgica: g.fechaLiturgica,
+      cita: g.cita,
+      texto: g.texto,
+      reflexion: buildReflection({ texto: g.texto, cita: g.cita }),
+      fuente: g.fuente,
+    };
+    log(
+      `Evangelio OK. Cita="${g.cita}". Texto=${g.texto.length} chars. Fuente=${g.fuente}.`,
+    );
+  } catch (err) {
+    fetchError = err;
+    annotate("error", `fetchGospel falló: ${err.message}`);
+    log(`[ERROR] fetchGospel: ${err.message}`);
+    payload = {
+      fecha,
+      fechaLiturgica: "(no disponible hoy)",
+      cita: "(no disponible hoy)",
+      texto:
+        "Hoy no fue posible obtener automáticamente el texto del " +
+        "Evangelio. Mientras se ajusta la fuente, puedes leerlo en:\n\n" +
+        "  • https://www.vaticannews.va/es/evangelio-de-hoy.html\n" +
+        "  • https://es.catholic.net/op/articulos/evangelio_del_dia.html\n\n" +
+        "Detalle técnico del error (para diagnóstico):\n" +
+        err.message,
+      reflexion:
+        "Aunque hoy falle la técnica, la Palabra sigue viva.\n" +
+        "Tomemos un momento para leer el Evangelio en alguna app o web.\n" +
+        "Que la jornada sea ocasión de escucha y de gesto concreto.\n" +
+        "La fidelidad pequeña abre paso a la gracia.\n" +
+        "Mañana volvemos a intentarlo.",
+      fuente: "—",
+    };
+  }
 
-  log("Enviando correo…");
-  const result = await sendEmail({
-    fecha,
-    fechaLiturgica,
-    cita,
-    texto,
-    reflexion,
-    fuente,
-  });
+  try {
+    log("Enviando correo…");
+    const result = await sendEmail(payload);
+    if (result.dryRun) {
+      log("Dry-run completado.");
+    } else {
+      log(`Correo enviado. messageId=${result.messageId}`);
+    }
+  } catch (err) {
+    annotate("error", `sendEmail falló: ${err.message}`);
+    log(`[ERROR] sendEmail: ${err.message}`);
+    throw err;
+  }
 
-  if (result.dryRun) {
-    log("Dry-run completado.");
-  } else {
-    log(`Correo enviado. messageId=${result.messageId}`);
+  // Si la obtención del Evangelio falló pero el correo se envió OK, igual
+  // marcamos el job como fallido para que GitHub avise.
+  if (fetchError) {
+    process.exitCode = 1;
   }
 }
 
 main().catch((err) => {
-  console.error("[ERROR]", err.message);
+  annotate("error", err.message || String(err));
+  console.error("[FATAL]", err.message);
   if (err.stack) console.error(err.stack);
   process.exit(1);
 });
