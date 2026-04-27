@@ -98,10 +98,14 @@ async function main() {
     throw err;
   }
 
-  // Si la obtención del Evangelio falló pero el correo se envió OK, igual
-  // marcamos el job como fallido para que GitHub avise.
+  // Si llegó hasta acá, el correo se envió. El run queda verde aunque
+  // alguna fuente del scraping haya fallado en cascada — la única cosa
+  // que importa es que te haya llegado el mail.
   if (fetchError) {
-    process.exitCode = 1;
+    annotate(
+      "warning",
+      "Todas las fuentes de Evangelio fallaron, se envió correo de diagnóstico.",
+    );
   }
 }
 
