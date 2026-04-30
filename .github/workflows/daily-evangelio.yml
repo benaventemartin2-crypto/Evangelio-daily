@@ -9,8 +9,12 @@ on:
     # Disparamos en ambas horas; el script (src/index.js) verifica con
     # TZ=America/Santiago si realmente son las 07:00 locales y, si no, sale
     # sin enviar. Así llega exactamente UN correo al día.
-    - cron: "0 10 * * *"
-    - cron: "0 11 * * *"
+    #
+    # Usamos minuto :07 en vez de :00 porque GitHub recomienda evitar los
+    # minutos exactos: a esa hora hay un pico de cron jobs y los retrasos
+    # de varios minutos (o saltos completos) son frecuentes.
+    - cron: "7 10 * * *"
+    - cron: "7 11 * * *"
   workflow_dispatch:
     inputs:
       force:
