@@ -1,4 +1,4 @@
-# Evangelio Daily
+# Evangelio Daily 
 
 Automatización mínima que cada día a las **07:00 AM hora Chile** te envía por
 **Gmail** el Evangelio del día con su cita, texto completo y una breve
